@@ -1,0 +1,24 @@
+<#
+.SYNOPSIS
+  Registers the AI CLI auto updater as a Windows Scheduled Task.
+.DESCRIPTION
+  Creates or replaces a per-user scheduled task that runs every day at 05:00.
+#>
+[CmdletBinding()]
+param(
+  [string]$TaskName = 'AI CLI Auto Update',
+  [string]$ScriptPath = $(Join-Path (Split-Path -Parent $PSScriptRoot) 'bin\update_ai_clis.ps1'),
+  [string]$At = '05:00'
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$resolvedScript = (Resolve-Path -LiteralPath $ScriptPath).Path
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy RemoteSigned -File `"$resolvedScript`""
+$trigger = New-ScheduledTaskTrigger -Daily -At $At
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Description 'Daily conservative updater for installed AI coding CLIs. Missing CLIs are skipped as pass.' -Force | Out-Null
+Write-Host "Registered scheduled task '$TaskName' to run daily at $At"
+Write-Host "Script: $resolvedScript"

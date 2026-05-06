@@ -1,0 +1,12 @@
+# local logs/state
+.ai-cli-auto-update/
+logs/
+*.log
+
+# macOS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# temp
+*.tmp
