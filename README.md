@@ -1,6 +1,6 @@
 # ai_cli_auto_update
 
-Codex CLI, Claude Code, Gemini CLI 같은 로컬 AI 코딩 CLI를 보수적으로 자동 업데이트하는 작은 유틸리티입니다.
+Codex CLI, Antigravity CLI 같은 로컬 AI 코딩 CLI를 보수적으로 자동 업데이트하는 작은 유틸리티입니다.
 
 - macOS: Bash 스크립트 + `launchd`
 - Windows: PowerShell 스크립트 + 작업 스케줄러
@@ -12,8 +12,9 @@ Codex CLI, Claude Code, Gemini CLI 같은 로컬 AI 코딩 CLI를 보수적으�
 | CLI | macOS 지원 방식 | Windows 지원 방식 | 미설치 시 동작 |
 | --- | --- | --- | --- |
 | `codex` | Homebrew `codex` 또는 npm `@openai/codex` | npm `@openai/codex` | `pass` 후 계속 진행 |
-| `claude` | npm `@anthropic-ai/claude-code`, `claude doctor`, `claude update` | npm `@anthropic-ai/claude-code`, `claude doctor`, `claude update` | `pass` 후 계속 진행 |
-| `gemini` | Homebrew `gemini-cli` 또는 npm `@google/gemini-cli` | npm `@google/gemini-cli` | `pass` 후 계속 진행 |
+| `agy` | Antigravity CLI 내장 `agy update` | 미지원 | `pass` 후 계속 진행 |
+
+Windows PowerShell 스크립트는 기존 npm 기반 `claude`, `gemini` 업데이트 경로를 유지합니다.
 
 > 원칙: 설치되어 있는 도구만 업데이트합니다. 없는 CLI를 새로 설치하지 않습니다.
 
