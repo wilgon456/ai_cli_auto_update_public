@@ -12,9 +12,7 @@ Codex CLI, Antigravity CLI 같은 로컬 AI 코딩 CLI를 보수적으로 자동
 | CLI | macOS 지원 방식 | Windows 지원 방식 | 미설치 시 동작 |
 | --- | --- | --- | --- |
 | `codex` | Homebrew `codex` 또는 npm `@openai/codex` | npm `@openai/codex` | `pass` 후 계속 진행 |
-| `agy` | Antigravity CLI 내장 `agy update` | 미지원 | `pass` 후 계속 진행 |
-
-Windows PowerShell 스크립트는 기존 npm 기반 `claude`, `gemini` 업데이트 경로를 유지합니다.
+| `agy` | Antigravity CLI 내장 `agy update` | Antigravity CLI 내장 `agy update` | `pass` 후 계속 진행 |
 
 > 원칙: 설치되어 있는 도구만 업데이트합니다. 없는 CLI를 새로 설치하지 않습니다.
 
@@ -51,18 +49,22 @@ cd ai_cli_auto_update_public
 
 ```bash
 LOG_DIR=/path/to/logs ./bin/update_ai_clis.sh
+LOG_RETENTION_DAYS=14 ./bin/update_ai_clis.sh
 ```
 
 ```powershell
 .\bin\update_ai_clis.ps1 -LogDir "C:\path\to\logs"
+.\bin\update_ai_clis.ps1 -LogRetentionDays 14
 ```
 
 각 실행은 timestamp 로그와 `latest.log`를 남깁니다.
+기본적으로 30일보다 오래된 `update-*.log`는 자동 삭제합니다. `LOG_RETENTION_DAYS`로 조정할 수 있고, `0`이면 정리를 끕니다.
 
 ## 안전 동작
 
 - 동시에 두 번 실행되지 않도록 잠금 처리합니다.
 - 업데이트 전/후 버전과 경로를 기록합니다.
+- 오래된 timestamp 로그를 자동 정리하고 `latest.log`는 유지합니다.
 - 한 CLI 업데이트가 실패해도 나머지 CLI 업데이트는 계속 진행합니다.
 - CLI가 아예 설치되어 있지 않으면 실패가 아니라 `pass`로 기록합니다.
 - 환경변수 전체나 토큰/시크릿 값을 출력하지 않습니다.

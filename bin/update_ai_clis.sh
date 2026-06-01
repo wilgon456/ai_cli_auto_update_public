@@ -14,6 +14,7 @@ set -Eeuo pipefail
 
 LOCK_DIR="${LOCK_DIR:-/tmp/ai-cli-auto-update.lockdir}"
 LOG_DIR="${LOG_DIR:-${HOME:-/tmp}/.ai-cli-auto-update/logs}"
+LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-30}"
 BREW="${BREW:-$(command -v brew 2>/dev/null || echo /usr/local/bin/brew)}"
 NPM="${NPM:-$(command -v npm 2>/dev/null || echo /usr/local/bin/npm)}"
 PATH="/usr/local/bin:/opt/homebrew/bin:${HOME:-}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
@@ -152,6 +153,27 @@ pass_missing() {
   echo "pass: $tool not installed or not managed here ($reason)"
 }
 
+cleanup_old_logs() {
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "dry-run: skipped log cleanup"
+    return 0
+  fi
+  if [[ ! "$LOG_RETENTION_DAYS" =~ ^[0-9]+$ ]]; then
+    echo "warn: invalid LOG_RETENTION_DAYS=$LOG_RETENTION_DAYS; skipping log cleanup"
+    return 0
+  fi
+  if ((LOG_RETENTION_DAYS == 0)); then
+    echo "pass: log cleanup disabled"
+    return 0
+  fi
+
+  local deleted=0 old_log
+  while IFS= read -r old_log; do
+    rm -f -- "$old_log" && ((deleted += 1))
+  done < <(find "$LOG_DIR" -type f -name 'update-*.log' -mtime +"$LOG_RETENTION_DAYS" -print 2>/dev/null)
+  echo "log cleanup: removed $deleted update logs older than ${LOG_RETENTION_DAYS}d"
+}
+
 record_version_failure() {
   local item="$1" existing
   if ((${#version_failures[@]})); then
@@ -272,6 +294,7 @@ update_agy_cli() {
 
 echo "[$(ts)] AI CLI update started"
 echo "host=$(hostname) user=$(id -un) dry_run=$DRY_RUN"
+cleanup_old_logs
 
 echo
 echo "== before versions =="
@@ -303,8 +326,8 @@ if is_npm_global_installed "@openai/codex"; then
   if is_npm_global_package_writable "@openai/codex"; then
     run_optional_step "codex npm shadow copy" update_npm_package "@openai/codex"
   else
-    echo "warn: optional codex npm shadow copy is installed but not writable; skipping stale shadow update"
-    echo "      cleanup manually with sudo if needed: $(npm_global_package_path "@openai/codex" 2>/dev/null || echo "@openai/codex")"
+    echo "pass: codex npm shadow copy is installed but inactive/not writable; skipping optional stale shadow update"
+    echo "      path: $(npm_global_package_path "@openai/codex" 2>/dev/null || echo "@openai/codex")"
   fi
 fi
 

@@ -2,14 +2,16 @@
 .SYNOPSIS
   Updates installed AI coding CLIs on Windows.
 .DESCRIPTION
-  Conservative updater for Codex CLI, Claude Code, and Gemini CLI.
+  Conservative updater for Codex CLI and Antigravity CLI.
   Missing CLIs/packages are treated as pass/skip, not failures.
 #>
 [CmdletBinding()]
 param(
   [Alias('Check')]
   [switch]$DryRun,
-  [string]$LogDir = $(if ($env:LOG_DIR) { $env:LOG_DIR } else { Join-Path $env:USERPROFILE '.ai-cli-auto-update\logs' })
+  [string]$LogDir = $(if ($env:LOG_DIR) { $env:LOG_DIR } else { Join-Path $env:USERPROFILE '.ai-cli-auto-update\logs' }),
+  [int]$LogRetentionDays = $(if ($env:LOG_RETENTION_DAYS) { [int]$env:LOG_RETENTION_DAYS } else { 30 }),
+  [int]$VersionTimeoutSeconds = $(if ($env:VERSION_TIMEOUT_SECONDS) { [int]$env:VERSION_TIMEOUT_SECONDS } else { 10 })
 )
 
 Set-StrictMode -Version Latest
@@ -23,6 +25,50 @@ function Ensure-Directory([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path)) {
     New-Item -ItemType Directory -Path $Path -Force | Out-Null
   }
+}
+
+function Invoke-WithTimeout([string]$Name, [string[]]$Arguments, [int]$TimeoutSeconds) {
+  $cmd = Get-Command $Name -ErrorAction Stop
+  $psi = [System.Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $cmd.Source
+  foreach ($arg in $Arguments) {
+    [void]$psi.ArgumentList.Add($arg)
+  }
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $psi.UseShellExecute = $false
+
+  $process = [System.Diagnostics.Process]::new()
+  $process.StartInfo = $psi
+  [void]$process.Start()
+  if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+    try { $process.Kill($true) } catch { }
+    return [pscustomobject]@{ ExitCode = 124; Output = "TIMEOUT after ${TimeoutSeconds}s" }
+  }
+
+  $output = @($process.StandardOutput.ReadToEnd(), $process.StandardError.ReadToEnd()) -join ''
+  return [pscustomobject]@{ ExitCode = $process.ExitCode; Output = $output }
+}
+
+function Remove-OldLogs([string]$Path, [int]$RetentionDays) {
+  if ($DryRun) {
+    Write-Host 'dry-run: skipped log cleanup'
+    return
+  }
+  if ($RetentionDays -lt 0) {
+    Write-Host "warn: invalid LogRetentionDays=$RetentionDays; skipping log cleanup"
+    return
+  }
+  if ($RetentionDays -eq 0) {
+    Write-Host 'pass: log cleanup disabled'
+    return
+  }
+  $cutoff = (Get-Date).AddDays(-$RetentionDays)
+  $logs = @(Get-ChildItem -LiteralPath $Path -Filter 'update-*.log' -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cutoff })
+  foreach ($log in $logs) {
+    Remove-Item -LiteralPath $log.FullName -Force -ErrorAction SilentlyContinue
+  }
+  Write-Host "log cleanup: removed $($logs.Count) update logs older than ${RetentionDays}d"
 }
 
 Ensure-Directory $LogDir
@@ -56,8 +102,17 @@ try {
     function Write-Version([string]$Name) {
       $path = Get-CommandPath $Name
       if ($path) {
-        Write-Host "${Name}:"
-        try { & $Name --version 2>&1 | Select-Object -First 1 | ForEach-Object { Write-Host "  $_" } } catch { Write-Host "  version check failed: $($_.Exception.Message)" }
+        $result = Invoke-WithTimeout $Name @('--version') $VersionTimeoutSeconds
+        $firstLine = (($result.Output -split "`r?`n") | Where-Object { $_ } | Select-Object -First 1)
+        if ($result.ExitCode -eq 124) {
+          Write-Host "${Name}: TIMEOUT after ${VersionTimeoutSeconds}s"
+        } elseif ($result.ExitCode -ne 0) {
+          $detail = if ($firstLine) { ": $firstLine" } else { '' }
+          Write-Host "${Name}: ERROR rc=$($result.ExitCode)$detail"
+        } else {
+          $versionLine = if ($firstLine) { $firstLine } else { 'unknown' }
+          Write-Host "${Name}: $versionLine"
+        }
         Write-Host "  path: $path"
       } else {
         Write-Host "${Name}: not installed"
@@ -97,14 +152,21 @@ try {
       if ($LASTEXITCODE -ne 0) { throw "npm install failed for $Package with exit code $LASTEXITCODE" }
     }
 
+    function Update-AgyCli {
+      if (-not (Get-CommandPath 'agy')) { throw 'agy is not installed' }
+      $result = Invoke-WithTimeout 'agy' @('update') 300
+      if ($result.Output) { Write-Host $result.Output.TrimEnd() }
+      if ($result.ExitCode -ne 0) { throw "agy update failed with exit code $($result.ExitCode)" }
+    }
+
     Write-Host "[$(Get-Timestamp)] AI CLI update started"
     Write-Host "host=$env:COMPUTERNAME user=$env:USERNAME dry_run=$DryRun"
+    Remove-OldLogs $LogDir $LogRetentionDays
 
     Write-Host ""
     Write-Host "== before versions =="
     Write-Version codex
-    Write-Version claude
-    Write-Version gemini
+    Write-Version agy
 
     if (Test-NpmGlobalPackage '@openai/codex') {
       Invoke-Step 'codex via npm' { Update-NpmPackage '@openai/codex' }
@@ -114,32 +176,16 @@ try {
       Pass-Missing 'codex' 'command exists but no supported Windows package manager was detected'
     }
 
-    if (Test-NpmGlobalPackage '@anthropic-ai/claude-code') {
-      Invoke-Step 'claude-code via npm' { Update-NpmPackage '@anthropic-ai/claude-code' }
-      $claudeUpdated = $true
-    } elseif (-not (Get-CommandPath 'claude')) {
-      Pass-Missing 'claude' 'command not found and npm global package not installed'
-      $claudeUpdated = $false
+    if (Get-CommandPath 'agy') {
+      Invoke-Step 'antigravity cli via agy' { Update-AgyCli }
     } else {
-      $claudeUpdated = $false
-    }
-    if ((-not $claudeUpdated) -and (Get-CommandPath 'claude')) {
-      Invoke-Step 'claude built-in update' { & claude update; if ($LASTEXITCODE -ne 0) { throw "claude update exit code $LASTEXITCODE" } }
-    }
-
-    if (Test-NpmGlobalPackage '@google/gemini-cli') {
-      Invoke-Step 'gemini-cli via npm' { Update-NpmPackage '@google/gemini-cli' }
-    } elseif (-not (Get-CommandPath 'gemini')) {
-      Pass-Missing 'gemini' 'command not found and npm global package not installed'
-    } else {
-      Pass-Missing 'gemini' 'command exists but no supported Windows package manager was detected'
+      Pass-Missing 'agy' 'command not found'
     }
 
     Write-Host ""
     Write-Host "== after versions =="
     Write-Version codex
-    Write-Version claude
-    Write-Version gemini
+    Write-Version agy
 
     Write-Host ""
     Write-Host "log_file=$logFile"
