@@ -202,7 +202,7 @@ is_npm_global_installed() {
 
 npm_global_package_path() {
   local pkg="$1" root
-  root="$($NPM root -g 2>/dev/null || true)"
+  root="$("$NPM" root -g 2>/dev/null || true)"
   [[ -n "$root" ]] || return 1
   printf '%s/%s\n' "$root" "$pkg"
 }
@@ -225,7 +225,7 @@ update_brew_package() {
   local name="$1"
   local outdated rc
   if is_brew_cask_installed "$name"; then
-    outdated="$($BREW outdated --cask "$name" 2>&1)"
+    outdated="$("$BREW" outdated --cask "$name" 2>&1)"
     rc=$?
     if ((rc != 0)) && [[ "$outdated" != *"$name"* ]]; then
       echo "$outdated"
@@ -237,7 +237,7 @@ update_brew_package() {
       echo "brew cask already up-to-date: $name"
     fi
   elif is_brew_formula_installed "$name"; then
-    outdated="$($BREW outdated --formula "$name" 2>&1)"
+    outdated="$("$BREW" outdated --formula "$name" 2>&1)"
     rc=$?
     if ((rc != 0)) && [[ "$outdated" != *"$name"* ]]; then
       echo "$outdated"
