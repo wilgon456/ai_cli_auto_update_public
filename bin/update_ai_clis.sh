@@ -4,8 +4,7 @@ set -Eeuo pipefail
 # Auto-update local AI coding CLIs.
 # Targets:
 #   - Codex CLI: Homebrew cask/formula when present; npm global only if it is the active command
-#   - Claude Code: npm global if active; also run built-in claude update when available
-#   - Gemini CLI: Homebrew formula/cask when present; npm global only if active
+#   - Antigravity CLI: agy built-in updater when present
 #
 # Safe behavior:
 #   - serializes with flock
@@ -203,7 +202,7 @@ is_npm_global_installed() {
 
 npm_global_package_path() {
   local pkg="$1" root
-  root="$("$NPM" root -g 2>/dev/null || true)"
+  root="$($NPM root -g 2>/dev/null || true)"
   [[ -n "$root" ]] || return 1
   printf '%s/%s\n' "$root" "$pkg"
 }
@@ -226,7 +225,7 @@ update_brew_package() {
   local name="$1"
   local outdated rc
   if is_brew_cask_installed "$name"; then
-    outdated="$("$BREW" outdated --cask "$name" 2>&1)"
+    outdated="$($BREW outdated --cask "$name" 2>&1)"
     rc=$?
     if ((rc != 0)) && [[ "$outdated" != *"$name"* ]]; then
       echo "$outdated"
@@ -238,7 +237,7 @@ update_brew_package() {
       echo "brew cask already up-to-date: $name"
     fi
   elif is_brew_formula_installed "$name"; then
-    outdated="$("$BREW" outdated --formula "$name" 2>&1)"
+    outdated="$($BREW outdated --formula "$name" 2>&1)"
     rc=$?
     if ((rc != 0)) && [[ "$outdated" != *"$name"* ]]; then
       echo "$outdated"
@@ -263,17 +262,24 @@ update_npm_package() {
   fi
 }
 
+update_agy_cli() {
+  if command -v agy >/dev/null 2>&1; then
+    command_with_timeout 300 agy update
+  else
+    echo "agy command not installed"
+  fi
+}
+
 echo "[$(ts)] AI CLI update started"
 echo "host=$(hostname) user=$(id -un) dry_run=$DRY_RUN"
 
 echo
 echo "== before versions =="
 version_of codex
-version_of claude
-version_of gemini
+version_of agy
 
 if command -v "$BREW" >/dev/null 2>&1; then
-  if is_brew_cask_installed codex || is_brew_formula_installed codex || is_brew_cask_installed gemini-cli || is_brew_formula_installed gemini-cli; then
+  if is_brew_cask_installed codex || is_brew_formula_installed codex; then
     run_step "brew update" "$BREW" update
   else
     echo "pass: no target Homebrew-managed CLIs installed; skipping brew update"
@@ -302,32 +308,17 @@ if is_npm_global_installed "@openai/codex"; then
   fi
 fi
 
-claude_updated=false
-if active_path_contains claude "/node_modules/" || is_npm_global_installed "@anthropic-ai/claude-code"; then
-  run_step "claude-code via npm" update_npm_package "@anthropic-ai/claude-code"
-  claude_updated=true
-elif ! command -v claude >/dev/null 2>&1; then
-  pass_missing claude "command not found and npm global package not installed"
-fi
-if [[ "$claude_updated" != "true" ]] && command -v claude >/dev/null 2>&1; then
-  run_optional_step "claude built-in update" claude update
-fi
-
-# Gemini: active install is Homebrew formula gemini-cli on this machine.
-if is_brew_cask_installed gemini-cli || is_brew_formula_installed gemini-cli; then
-  run_step "gemini-cli via brew" update_brew_package gemini-cli
-elif active_path_contains gemini "/node_modules/" || is_npm_global_installed "@google/gemini-cli"; then
-  run_step "gemini-cli via npm" update_npm_package "@google/gemini-cli"
+if command -v agy >/dev/null 2>&1; then
+  run_step "antigravity cli via agy" update_agy_cli
 else
-  pass_missing gemini "no brew gemini-cli package and no npm global package"
+  pass_missing agy "command not found"
 fi
 
 echo
 echo "== after versions =="
 hash -r || true
 version_of codex
-version_of claude
-version_of gemini
+version_of agy
 
 echo
 echo "log_file=$LOG_FILE"
