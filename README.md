@@ -1,6 +1,6 @@
 # ai_cli_auto_update
 
-Codex CLI, Antigravity CLI, Kimi Code CLI 같은 로컬 AI 코딩 CLI를 보수적으로 자동 업데이트하는 작은 유틸리티입니다.
+Kimi Code CLI, GPT/Codex CLI, Antigravity CLI, Claude Code, Grok Build 같은 로컬 AI 코딩 CLI를 보수적으로 자동 업데이트하는 작은 유틸리티입니다.
 
 - macOS: Bash 스크립트 + `launchd`
 - Windows: PowerShell 스크립트 + 작업 스케줄러
@@ -11,21 +11,24 @@ Codex CLI, Antigravity CLI, Kimi Code CLI 같은 로컬 AI 코딩 CLI를 보수�
 
 | CLI | macOS 지원 방식 | Windows 지원 방식 | 미설치 시 동작 |
 | --- | --- | --- | --- |
-| `codex` | Homebrew `codex` 또는 npm `@openai/codex` | npm `@openai/codex` | `pass` 후 계속 진행 |
-| `agy` | Antigravity CLI 내장 `agy update` | Antigravity CLI 내장 `agy update` | `pass` 후 계속 진행 |
 | `kimi` | npm `@moonshot-ai/kimi-code` | npm `@moonshot-ai/kimi-code` | `pass` 후 계속 진행 |
+| `gpt` | OpenAI Codex CLI: Homebrew `codex` 또는 npm `@openai/codex` | npm `@openai/codex` | `pass` 후 계속 진행 |
+| `agy` | Antigravity CLI 내장 `agy update` | Antigravity CLI 내장 `agy update` | `pass` 후 계속 진행 |
+| `claude` | Homebrew `claude-code`, npm `@anthropic-ai/claude-code`, 또는 `claude update` | npm `@anthropic-ai/claude-code` 또는 `claude update` | `pass` 후 계속 진행 |
+| `grok` | xAI 공식 install script 재실행 | xAI 공식 PowerShell install script 재실행 | `pass` 후 계속 진행 |
 
 > 원칙: 설치되어 있는 도구만 업데이트합니다. 없는 CLI를 새로 설치하지 않습니다.
 
-기본 대상은 `codex,agy,kimi`입니다. `AI_CLI_TARGETS` 또는 `--targets` / `-Targets`로 원하는 CLI만 선택할 수 있습니다.
+기본 대상은 `kimi,gpt,agy,claude,grok`입니다. `AI_CLI_TARGETS` 또는 `--targets` / `-Targets`로 원하는 CLI만 선택할 수 있습니다.
+`gpt`는 OpenAI Codex CLI의 선택 이름이며 실제 명령은 `codex`입니다. 기존 자동화 호환을 위해 `codex` 타깃 이름도 계속 허용합니다.
 
 ```bash
-AI_CLI_TARGETS=codex,kimi ./bin/update_ai_clis.sh --dry-run
-./bin/update_ai_clis.sh --targets codex,agy
+AI_CLI_TARGETS=kimi,gpt ./bin/update_ai_clis.sh --dry-run
+./bin/update_ai_clis.sh --targets kimi,gpt,agy
 ```
 
 ```powershell
-.\bin\update_ai_clis.ps1 -Targets codex,kimi -DryRun
+.\bin\update_ai_clis.ps1 -Targets kimi,gpt -DryRun
 ```
 
 미설치 CLI를 새로 설치하려면 명시적으로 opt-in 해야 합니다.
@@ -55,13 +58,21 @@ AI_CLI_TARGETS=codex,kimi ./bin/update_ai_clis.sh --dry-run
 권장 흐름:
 
 1. OS와 패키지 매니저 감지
-2. 지원 CLI 목록 표시: `codex`, `agy`, `kimi`
+2. 지원 CLI 목록 표시: `kimi`, `gpt`, `agy`, `claude`, `grok`
 3. 사용자가 설치/자동 업데이트 대상을 선택
 4. 선택 결과를 설정 파일 또는 스케줄러 환경변수의 `AI_CLI_TARGETS`로 저장
 5. 미설치 CLI는 사용자가 동의한 경우에만 설치
 6. 스케줄러는 저장된 대상만 업데이트
 
 Kimi Code CLI는 최신 공식 문서 기준으로 새 버전이 Node.js 기반이며, npm 패키지 이름은 `@moonshot-ai/kimi-code`입니다. 기존 Python/uv 기반 `kimi-cli`는 점진적으로 교체되는 경로로 안내되어 있으므로, 자동화에는 npm 기반 설치를 우선합니다.
+Claude Code는 npm `@anthropic-ai/claude-code` 또는 CLI 내장 `claude update`를 우선합니다. Grok Build는 xAI 공식 install script를 재실행하는 방식입니다. Grok 쪽은 공식 문서상 베타 성격이 강하고 계정/구독 조건이 있을 수 있으므로, 상용화 시에는 설치 가능 여부와 약관을 별도 표시하는 것이 좋습니다.
+
+공식 참고 문서:
+
+- Kimi Code CLI: <https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started.html>
+- OpenAI Codex CLI: <https://help.openai.com/en/articles/11096431>
+- Claude Code: <https://code.claude.com/docs/en/installation>
+- Grok Build: <https://docs.x.ai/build/overview>
 
 ## 빠른 실행
 
@@ -72,7 +83,7 @@ git clone https://github.com/wilgon456/ai_cli_auto_update_public.git
 cd ai_cli_auto_update_public
 ./bin/update_ai_clis.sh --dry-run
 ./bin/update_ai_clis.sh
-./bin/update_ai_clis.sh --targets codex,kimi
+./bin/update_ai_clis.sh --targets kimi,gpt,claude
 ```
 
 ### Windows PowerShell
@@ -82,7 +93,7 @@ git clone https://github.com/wilgon456/ai_cli_auto_update_public.git
 cd ai_cli_auto_update_public
 .\bin\update_ai_clis.ps1 -DryRun
 .\bin\update_ai_clis.ps1
-.\bin\update_ai_clis.ps1 -Targets codex,kimi
+.\bin\update_ai_clis.ps1 -Targets kimi,gpt,claude
 ```
 
 ## 로그 위치
@@ -121,13 +132,13 @@ LOG_RETENTION_DAYS=14 ./bin/update_ai_clis.sh
   - Bash: `--dry-run` 또는 `--check`
   - PowerShell: `-DryRun`
 - 업데이트 대상 선택을 지원합니다.
-  - Bash: `AI_CLI_TARGETS=codex,kimi` 또는 `--targets codex,kimi`
-  - PowerShell: `-Targets codex,kimi`
+  - Bash: `AI_CLI_TARGETS=kimi,gpt,claude` 또는 `--targets kimi,gpt,claude`
+  - PowerShell: `-Targets kimi,gpt,claude`
 - 미설치 CLI 설치는 기본 비활성화이며, 명시적인 opt-in이 필요합니다.
   - Bash: `--install-missing`
   - PowerShell: `-InstallMissing`
 - 버전 확인 명령은 기본 10초 timeout을 적용합니다.
-- `agy update`는 최대 300초 후 timeout 처리해 대화형 프롬프트나 hang이 자동 실행을 영구 점유하지 않도록 합니다.
+- `agy update`, `claude update`, Grok install script는 최대 300초 후 timeout 처리해 대화형 프롬프트나 hang이 자동 실행을 영구 점유하지 않도록 합니다.
 
 ## 알려진 한계
 
@@ -157,7 +168,7 @@ launchctl load ~/Library/LaunchAgents/com.example.ai-cli-auto-update.plist
 <key>EnvironmentVariables</key>
 <dict>
   <key>AI_CLI_TARGETS</key>
-  <string>codex,kimi</string>
+  <string>kimi,gpt,claude</string>
 </dict>
 ```
 
@@ -182,13 +193,13 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 - 작업 이름: `AI CLI Auto Update`
 - 실행 시각: 매일 05:00
 - 실행 스크립트: `bin\update_ai_clis.ps1`
-- 업데이트 대상: `codex,agy,kimi`
+- 업데이트 대상: `kimi,gpt,agy,claude,grok`
 
 시각, 경로, 업데이트 대상을 바꾸려면:
 
 ```powershell
 .\windows\install_scheduled_task.ps1 -At "05:00" -ScriptPath "C:\path\to\ai_cli_auto_update\bin\update_ai_clis.ps1"
-.\windows\install_scheduled_task.ps1 -Targets "codex,kimi"
+.\windows\install_scheduled_task.ps1 -Targets "kimi,gpt,claude"
 .\windows\install_scheduled_task.ps1 -Targets "kimi" -InstallMissing
 ```
 

@@ -12,7 +12,7 @@ param(
   [string]$LogDir = $(if ($env:LOG_DIR) { $env:LOG_DIR } else { Join-Path $env:USERPROFILE '.ai-cli-auto-update\logs' }),
   [int]$LogRetentionDays = $(if ($env:LOG_RETENTION_DAYS) { [int]$env:LOG_RETENTION_DAYS } else { 30 }),
   [int]$VersionTimeoutSeconds = $(if ($env:VERSION_TIMEOUT_SECONDS) { [int]$env:VERSION_TIMEOUT_SECONDS } else { 10 }),
-  [string]$Targets = $(if ($env:AI_CLI_TARGETS) { $env:AI_CLI_TARGETS } else { 'codex,agy,kimi' }),
+  [string]$Targets = $(if ($env:AI_CLI_TARGETS) { $env:AI_CLI_TARGETS } else { 'kimi,gpt,agy,claude,grok' }),
   [switch]$InstallMissing
 )
 
@@ -76,6 +76,10 @@ function Remove-OldLogs([string]$Path, [int]$RetentionDays) {
 function Test-TargetEnabled([string]$Name) {
   $selected = @($Targets -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
   return ($selected -contains 'all') -or ($selected -contains $Name.ToLowerInvariant())
+}
+
+function Test-GptTargetEnabled {
+  return (Test-TargetEnabled 'gpt') -or (Test-TargetEnabled 'codex')
 }
 
 Ensure-Directory $LogDir
@@ -183,25 +187,57 @@ try {
       }
     }
 
+    function Update-ClaudeCli {
+      if (Test-NpmGlobalPackage '@anthropic-ai/claude-code') {
+        Update-NpmPackage '@anthropic-ai/claude-code'
+      } elseif (Get-CommandPath 'claude') {
+        $result = Invoke-WithTimeout 'claude' @('update') 300
+        if ($result.Output) { Write-Host $result.Output.TrimEnd() }
+        if ($result.ExitCode -ne 0) { throw "claude update failed with exit code $($result.ExitCode)" }
+      } elseif ($InstallMissing) {
+        Install-NpmPackage '@anthropic-ai/claude-code'
+      } else {
+        Pass-Missing 'claude' 'command not found and npm global package not installed'
+      }
+    }
+
+    function Install-OrUpdate-GrokCli {
+      $result = Invoke-WithTimeout 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'irm https://x.ai/cli/install.ps1 | iex') 300
+      if ($result.Output) { Write-Host $result.Output.TrimEnd() }
+      if ($result.ExitCode -ne 0) { throw "grok installer failed with exit code $($result.ExitCode)" }
+    }
+
+    function Update-GrokCli {
+      if (Get-CommandPath 'grok') {
+        Install-OrUpdate-GrokCli
+      } elseif ($InstallMissing) {
+        Install-OrUpdate-GrokCli
+      } else {
+        Pass-Missing 'grok' 'command not found'
+      }
+    }
+
     Write-Host "[$(Get-Timestamp)] AI CLI update started"
     Write-Host "host=$env:COMPUTERNAME user=$env:USERNAME dry_run=$DryRun targets=$Targets install_missing=$InstallMissing"
     Remove-OldLogs $LogDir $LogRetentionDays
 
     Write-Host ""
     Write-Host "== before versions =="
-    if (Test-TargetEnabled 'codex') { Write-Version codex }
+    if (Test-GptTargetEnabled) { Write-Version codex }
     if (Test-TargetEnabled 'agy') { Write-Version agy }
     if (Test-TargetEnabled 'kimi') { Write-Version kimi }
+    if (Test-TargetEnabled 'claude') { Write-Version claude }
+    if (Test-TargetEnabled 'grok') { Write-Version grok }
 
-    if (Test-TargetEnabled 'codex') {
+    if (Test-GptTargetEnabled) {
       if (Test-NpmGlobalPackage '@openai/codex') {
-        Invoke-Step 'codex via npm' { Update-NpmPackage '@openai/codex' }
+        Invoke-Step 'gpt/codex via npm' { Update-NpmPackage '@openai/codex' }
       } elseif (-not (Get-CommandPath 'codex') -and $InstallMissing) {
-        Invoke-Step 'codex via npm install' { Install-NpmPackage '@openai/codex' }
+        Invoke-Step 'gpt/codex via npm install' { Install-NpmPackage '@openai/codex' }
       } elseif (-not (Get-CommandPath 'codex')) {
-        Pass-Missing 'codex' 'command not found and npm global package not installed'
+        Pass-Missing 'gpt' 'codex command not found and npm global package not installed'
       } else {
-        Pass-Missing 'codex' 'command exists but no supported Windows package manager was detected'
+        Pass-Missing 'gpt' 'codex command exists but no supported Windows package manager was detected'
       }
     }
 
@@ -217,11 +253,21 @@ try {
       Invoke-Step 'kimi code via npm' { Update-KimiCli }
     }
 
+    if (Test-TargetEnabled 'claude') {
+      Invoke-Step 'claude code' { Update-ClaudeCli }
+    }
+
+    if (Test-TargetEnabled 'grok') {
+      Invoke-Step 'grok build' { Update-GrokCli }
+    }
+
     Write-Host ""
     Write-Host "== after versions =="
-    if (Test-TargetEnabled 'codex') { Write-Version codex }
+    if (Test-GptTargetEnabled) { Write-Version codex }
     if (Test-TargetEnabled 'agy') { Write-Version agy }
     if (Test-TargetEnabled 'kimi') { Write-Version kimi }
+    if (Test-TargetEnabled 'claude') { Write-Version claude }
+    if (Test-TargetEnabled 'grok') { Write-Version grok }
 
     Write-Host ""
     Write-Host "log_file=$logFile"

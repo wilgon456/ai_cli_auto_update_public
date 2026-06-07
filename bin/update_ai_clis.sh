@@ -3,9 +3,11 @@ set -Eeuo pipefail
 
 # Auto-update local AI coding CLIs.
 # Targets:
-#   - Codex CLI: Homebrew cask/formula when present; npm global only if it is the active command
+#   - GPT/Codex CLI: Homebrew cask/formula when present; npm global only if it is the active command
 #   - Antigravity CLI: agy built-in updater when present
 #   - Kimi Code CLI: npm @moonshot-ai/kimi-code when npm-managed
+#   - Claude Code CLI: Homebrew, npm, or built-in claude update
+#   - Grok Build CLI: official xAI install script
 #
 # Safe behavior:
 #   - serializes with flock
@@ -18,7 +20,7 @@ LOG_DIR="${LOG_DIR:-${HOME:-/tmp}/.ai-cli-auto-update/logs}"
 LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-30}"
 BREW="${BREW:-$(command -v brew 2>/dev/null || echo /usr/local/bin/brew)}"
 NPM="${NPM:-$(command -v npm 2>/dev/null || echo /usr/local/bin/npm)}"
-AI_CLI_TARGETS="${AI_CLI_TARGETS:-codex,agy,kimi}"
+AI_CLI_TARGETS="${AI_CLI_TARGETS:-kimi,gpt,agy,claude,grok}"
 INSTALL_MISSING="${INSTALL_MISSING:-false}"
 PATH="/usr/local/bin:/opt/homebrew/bin:${HOME:-}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 DRY_RUN=false
@@ -37,7 +39,7 @@ while (($#)); do
       ;;
     --targets=*) AI_CLI_TARGETS="${1#--targets=}" ;;
     -h|--help)
-      echo "Usage: $0 [--dry-run|--check] [--targets codex,agy,kimi|all] [--install-missing]"
+      echo "Usage: $0 [--dry-run|--check] [--targets kimi,gpt,agy,claude,grok|all] [--install-missing]"
       exit 0
       ;;
     *)
@@ -174,6 +176,10 @@ target_enabled() {
   local target="$1"
   local normalized=",${AI_CLI_TARGETS//[[:space:]]/},"
   [[ "$normalized" == *,all,* || "$normalized" == *,"$target",* ]]
+}
+
+gpt_target_enabled() {
+  target_enabled gpt || target_enabled codex
 }
 
 cleanup_old_logs() {
@@ -321,6 +327,35 @@ update_agy_cli() {
   fi
 }
 
+update_claude_cli() {
+  if is_brew_cask_installed claude-code || is_brew_formula_installed claude-code; then
+    update_brew_package claude-code
+  elif is_npm_global_installed "@anthropic-ai/claude-code"; then
+    update_npm_package "@anthropic-ai/claude-code"
+  elif command -v claude >/dev/null 2>&1; then
+    command_with_timeout 300 claude update
+  elif [[ "$INSTALL_MISSING" == "true" ]]; then
+    install_npm_package "@anthropic-ai/claude-code"
+  else
+    pass_missing claude "command not found and no supported package manager install detected"
+  fi
+}
+
+install_or_update_grok_cli() {
+  command -v curl >/dev/null 2>&1 || { echo "curl is not installed"; return 1; }
+  command_with_timeout 300 bash -c 'curl -fsSL https://x.ai/cli/install.sh | bash'
+}
+
+update_grok_cli() {
+  if command -v grok >/dev/null 2>&1; then
+    install_or_update_grok_cli
+  elif [[ "$INSTALL_MISSING" == "true" ]]; then
+    install_or_update_grok_cli
+  else
+    pass_missing grok "command not found"
+  fi
+}
+
 update_kimi_cli() {
   if is_npm_global_installed "@moonshot-ai/kimi-code"; then
     update_npm_package "@moonshot-ai/kimi-code"
@@ -340,12 +375,14 @@ cleanup_old_logs
 
 echo
 echo "== before versions =="
-target_enabled codex && version_of codex
+gpt_target_enabled && version_of codex
 target_enabled agy && version_of agy
 target_enabled kimi && version_of kimi
+target_enabled claude && version_of claude
+target_enabled grok && version_of grok
 
 if command -v "$BREW" >/dev/null 2>&1; then
-  if target_enabled codex && { is_brew_cask_installed codex || is_brew_formula_installed codex; }; then
+  if { gpt_target_enabled && { is_brew_cask_installed codex || is_brew_formula_installed codex; }; } || { target_enabled claude && { is_brew_cask_installed claude-code || is_brew_formula_installed claude-code; }; }; then
     run_step "brew update" "$BREW" update
   else
     echo "pass: no target Homebrew-managed CLIs installed; skipping brew update"
@@ -355,15 +392,15 @@ else
 fi
 
 # Codex: prefer Homebrew when it manages the active install.
-if target_enabled codex; then
+if gpt_target_enabled; then
   if is_brew_cask_installed codex || is_brew_formula_installed codex; then
-    run_step "codex via brew" update_brew_package codex
+    run_step "gpt/codex via brew" update_brew_package codex
   elif active_path_contains codex "/node_modules/" || is_npm_global_installed "@openai/codex"; then
-    run_step "codex via npm" update_npm_package "@openai/codex"
+    run_step "gpt/codex via npm" update_npm_package "@openai/codex"
   elif [[ "$INSTALL_MISSING" == "true" ]]; then
-    run_step "codex via npm install" install_npm_package "@openai/codex"
+    run_step "gpt/codex via npm install" install_npm_package "@openai/codex"
   else
-    pass_missing codex "no brew package and no npm global package"
+    pass_missing gpt "codex command not found and no brew/npm package"
   fi
 
   # Keep a stale npm Codex install current only if it exists AND is not shadowing brew unexpectedly.
@@ -390,12 +427,22 @@ if target_enabled kimi; then
   run_step "kimi code via npm" update_kimi_cli
 fi
 
+if target_enabled claude; then
+  run_step "claude code" update_claude_cli
+fi
+
+if target_enabled grok; then
+  run_step "grok build" update_grok_cli
+fi
+
 echo
 echo "== after versions =="
 hash -r || true
-target_enabled codex && version_of codex
+gpt_target_enabled && version_of codex
 target_enabled agy && version_of agy
 target_enabled kimi && version_of kimi
+target_enabled claude && version_of claude
+target_enabled grok && version_of grok
 
 echo
 echo "log_file=$LOG_FILE"
