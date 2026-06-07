@@ -297,6 +297,7 @@ try {
     }
 
     Write-Host "[$(Get-Timestamp)] AI CLI update finished successfully"
+    exit 0
   } finally {
     if ($hasLock) { $mutex.ReleaseMutex() | Out-Null }
     $mutex.Dispose()
