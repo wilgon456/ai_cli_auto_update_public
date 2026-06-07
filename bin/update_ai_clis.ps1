@@ -165,9 +165,9 @@ try {
       }
       try {
         & $Action
-        Write-Host "✓ $Name ok"
+        Write-Host "ok: $Name"
       } catch {
-        Write-Host "✗ $Name failed: $($_.Exception.Message)"
+        Write-Host "fail: $Name failed: $($_.Exception.Message)"
         $script:failures.Add($Name) | Out-Null
       }
     }
