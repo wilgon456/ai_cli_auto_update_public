@@ -5,6 +5,7 @@ set -Eeuo pipefail
 # Targets:
 #   - Codex CLI: Homebrew cask/formula when present; npm global only if it is the active command
 #   - Antigravity CLI: agy built-in updater when present
+#   - Kimi Code CLI: npm @moonshot-ai/kimi-code when npm-managed
 #
 # Safe behavior:
 #   - serializes with flock
@@ -17,19 +18,35 @@ LOG_DIR="${LOG_DIR:-${HOME:-/tmp}/.ai-cli-auto-update/logs}"
 LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-30}"
 BREW="${BREW:-$(command -v brew 2>/dev/null || echo /usr/local/bin/brew)}"
 NPM="${NPM:-$(command -v npm 2>/dev/null || echo /usr/local/bin/npm)}"
+AI_CLI_TARGETS="${AI_CLI_TARGETS:-codex,agy,kimi}"
+INSTALL_MISSING="${INSTALL_MISSING:-false}"
 PATH="/usr/local/bin:/opt/homebrew/bin:${HOME:-}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 DRY_RUN=false
 VERSION_TIMEOUT_SECONDS="${VERSION_TIMEOUT_SECONDS:-10}"
 if [[ ! "$VERSION_TIMEOUT_SECONDS" =~ ^[0-9]+([.][0-9]+)?$ ]] || [[ "$VERSION_TIMEOUT_SECONDS" == 0 || "$VERSION_TIMEOUT_SECONDS" == 0.0 ]]; then
   VERSION_TIMEOUT_SECONDS=10
 fi
-case "${1:-}" in
-  --dry-run|--check) DRY_RUN=true ;;
-  -h|--help)
-    echo "Usage: $0 [--dry-run|--check]"
-    exit 0
-    ;;
-esac
+while (($#)); do
+  case "$1" in
+    --dry-run|--check) DRY_RUN=true ;;
+    --install-missing) INSTALL_MISSING=true ;;
+    --targets)
+      shift
+      [[ "${1:-}" ]] || { echo "missing value for --targets" >&2; exit 2; }
+      AI_CLI_TARGETS="$1"
+      ;;
+    --targets=*) AI_CLI_TARGETS="${1#--targets=}" ;;
+    -h|--help)
+      echo "Usage: $0 [--dry-run|--check] [--targets codex,agy,kimi|all] [--install-missing]"
+      exit 0
+      ;;
+    *)
+      echo "unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
 
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
@@ -151,6 +168,12 @@ run_optional_step() {
 pass_missing() {
   local tool="$1" reason="$2"
   echo "pass: $tool not installed or not managed here ($reason)"
+}
+
+target_enabled() {
+  local target="$1"
+  local normalized=",${AI_CLI_TARGETS//[[:space:]]/},"
+  [[ "$normalized" == *,all,* || "$normalized" == *,"$target",* ]]
 }
 
 cleanup_old_logs() {
@@ -284,6 +307,12 @@ update_npm_package() {
   fi
 }
 
+install_npm_package() {
+  local pkg="$1"
+  command -v "$NPM" >/dev/null 2>&1 || { echo "npm is not installed"; return 1; }
+  "$NPM" install -g "$pkg@latest"
+}
+
 update_agy_cli() {
   if command -v agy >/dev/null 2>&1; then
     command_with_timeout 300 agy update
@@ -292,17 +321,31 @@ update_agy_cli() {
   fi
 }
 
+update_kimi_cli() {
+  if is_npm_global_installed "@moonshot-ai/kimi-code"; then
+    update_npm_package "@moonshot-ai/kimi-code"
+  elif command -v kimi >/dev/null 2>&1; then
+    echo "kimi command exists but is not npm-managed; skipping unattended update"
+    echo "      reinstall/update with npm for automation: npm install -g @moonshot-ai/kimi-code@latest"
+  elif [[ "$INSTALL_MISSING" == "true" ]]; then
+    install_npm_package "@moonshot-ai/kimi-code"
+  else
+    pass_missing kimi "command not found and npm global package not installed"
+  fi
+}
+
 echo "[$(ts)] AI CLI update started"
-echo "host=$(hostname) user=$(id -un) dry_run=$DRY_RUN"
+echo "host=$(hostname) user=$(id -un) dry_run=$DRY_RUN targets=$AI_CLI_TARGETS install_missing=$INSTALL_MISSING"
 cleanup_old_logs
 
 echo
 echo "== before versions =="
-version_of codex
-version_of agy
+target_enabled codex && version_of codex
+target_enabled agy && version_of agy
+target_enabled kimi && version_of kimi
 
 if command -v "$BREW" >/dev/null 2>&1; then
-  if is_brew_cask_installed codex || is_brew_formula_installed codex; then
+  if target_enabled codex && { is_brew_cask_installed codex || is_brew_formula_installed codex; }; then
     run_step "brew update" "$BREW" update
   else
     echo "pass: no target Homebrew-managed CLIs installed; skipping brew update"
@@ -312,36 +355,47 @@ else
 fi
 
 # Codex: prefer Homebrew when it manages the active install.
-if is_brew_cask_installed codex || is_brew_formula_installed codex; then
-  run_step "codex via brew" update_brew_package codex
-elif active_path_contains codex "/node_modules/" || is_npm_global_installed "@openai/codex"; then
-  run_step "codex via npm" update_npm_package "@openai/codex"
-else
-  pass_missing codex "no brew package and no npm global package"
-fi
-
-# Keep a stale npm Codex install current only if it exists AND is not shadowing brew unexpectedly.
-# This prevents future PATH flips from resurrecting an old Codex binary.
-if is_npm_global_installed "@openai/codex"; then
-  if is_npm_global_package_writable "@openai/codex"; then
-    run_optional_step "codex npm shadow copy" update_npm_package "@openai/codex"
+if target_enabled codex; then
+  if is_brew_cask_installed codex || is_brew_formula_installed codex; then
+    run_step "codex via brew" update_brew_package codex
+  elif active_path_contains codex "/node_modules/" || is_npm_global_installed "@openai/codex"; then
+    run_step "codex via npm" update_npm_package "@openai/codex"
+  elif [[ "$INSTALL_MISSING" == "true" ]]; then
+    run_step "codex via npm install" install_npm_package "@openai/codex"
   else
-    echo "pass: codex npm shadow copy is installed but inactive/not writable; skipping optional stale shadow update"
-    echo "      path: $(npm_global_package_path "@openai/codex" 2>/dev/null || echo "@openai/codex")"
+    pass_missing codex "no brew package and no npm global package"
+  fi
+
+  # Keep a stale npm Codex install current only if it exists AND is not shadowing brew unexpectedly.
+  # This prevents future PATH flips from resurrecting an old Codex binary.
+  if is_npm_global_installed "@openai/codex"; then
+    if is_npm_global_package_writable "@openai/codex"; then
+      run_optional_step "codex npm shadow copy" update_npm_package "@openai/codex"
+    else
+      echo "pass: codex npm shadow copy is installed but inactive/not writable; skipping optional stale shadow update"
+      echo "      path: $(npm_global_package_path "@openai/codex" 2>/dev/null || echo "@openai/codex")"
+    fi
   fi
 fi
 
-if command -v agy >/dev/null 2>&1; then
-  run_step "antigravity cli via agy" update_agy_cli
-else
-  pass_missing agy "command not found"
+if target_enabled agy; then
+  if command -v agy >/dev/null 2>&1; then
+    run_step "antigravity cli via agy" update_agy_cli
+  else
+    pass_missing agy "command not found"
+  fi
+fi
+
+if target_enabled kimi; then
+  run_step "kimi code via npm" update_kimi_cli
 fi
 
 echo
 echo "== after versions =="
 hash -r || true
-version_of codex
-version_of agy
+target_enabled codex && version_of codex
+target_enabled agy && version_of agy
+target_enabled kimi && version_of kimi
 
 echo
 echo "log_file=$LOG_FILE"

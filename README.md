@@ -1,6 +1,6 @@
 # ai_cli_auto_update
 
-Codex CLI, Antigravity CLI 같은 로컬 AI 코딩 CLI를 보수적으로 자동 업데이트하는 작은 유틸리티입니다.
+Codex CLI, Antigravity CLI, Kimi Code CLI 같은 로컬 AI 코딩 CLI를 보수적으로 자동 업데이트하는 작은 유틸리티입니다.
 
 - macOS: Bash 스크립트 + `launchd`
 - Windows: PowerShell 스크립트 + 작업 스케줄러
@@ -13,8 +13,30 @@ Codex CLI, Antigravity CLI 같은 로컬 AI 코딩 CLI를 보수적으로 자동
 | --- | --- | --- | --- |
 | `codex` | Homebrew `codex` 또는 npm `@openai/codex` | npm `@openai/codex` | `pass` 후 계속 진행 |
 | `agy` | Antigravity CLI 내장 `agy update` | Antigravity CLI 내장 `agy update` | `pass` 후 계속 진행 |
+| `kimi` | npm `@moonshot-ai/kimi-code` | npm `@moonshot-ai/kimi-code` | `pass` 후 계속 진행 |
 
 > 원칙: 설치되어 있는 도구만 업데이트합니다. 없는 CLI를 새로 설치하지 않습니다.
+
+기본 대상은 `codex,agy,kimi`입니다. `AI_CLI_TARGETS` 또는 `--targets` / `-Targets`로 원하는 CLI만 선택할 수 있습니다.
+
+```bash
+AI_CLI_TARGETS=codex,kimi ./bin/update_ai_clis.sh --dry-run
+./bin/update_ai_clis.sh --targets codex,agy
+```
+
+```powershell
+.\bin\update_ai_clis.ps1 -Targets codex,kimi -DryRun
+```
+
+미설치 CLI를 새로 설치하려면 명시적으로 opt-in 해야 합니다.
+
+```bash
+./bin/update_ai_clis.sh --targets kimi --install-missing
+```
+
+```powershell
+.\bin\update_ai_clis.ps1 -Targets kimi -InstallMissing
+```
 
 ## 운영 적합성
 
@@ -28,6 +50,19 @@ Codex CLI, Antigravity CLI 같은 로컬 AI 코딩 CLI를 보수적으로 자동
 
 상용 운영 수준으로 쓰려면 최소한 실패 알림, CI 기반 Windows 검증, 보안/운영 정책 문서화, 업데이트 실패 리포트를 추가하는 것을 권장합니다.
 
+상용화 버전에서는 설치 단계에서 사용자가 업데이트할 AI CLI를 선택하도록 만드는 구성이 자연스럽습니다.
+
+권장 흐름:
+
+1. OS와 패키지 매니저 감지
+2. 지원 CLI 목록 표시: `codex`, `agy`, `kimi`
+3. 사용자가 설치/자동 업데이트 대상을 선택
+4. 선택 결과를 설정 파일 또는 스케줄러 환경변수의 `AI_CLI_TARGETS`로 저장
+5. 미설치 CLI는 사용자가 동의한 경우에만 설치
+6. 스케줄러는 저장된 대상만 업데이트
+
+Kimi Code CLI는 최신 공식 문서 기준으로 새 버전이 Node.js 기반이며, npm 패키지 이름은 `@moonshot-ai/kimi-code`입니다. 기존 Python/uv 기반 `kimi-cli`는 점진적으로 교체되는 경로로 안내되어 있으므로, 자동화에는 npm 기반 설치를 우선합니다.
+
 ## 빠른 실행
 
 ### macOS / Linux 계열 셸
@@ -37,6 +72,7 @@ git clone https://github.com/wilgon456/ai_cli_auto_update_public.git
 cd ai_cli_auto_update_public
 ./bin/update_ai_clis.sh --dry-run
 ./bin/update_ai_clis.sh
+./bin/update_ai_clis.sh --targets codex,kimi
 ```
 
 ### Windows PowerShell
@@ -46,6 +82,7 @@ git clone https://github.com/wilgon456/ai_cli_auto_update_public.git
 cd ai_cli_auto_update_public
 .\bin\update_ai_clis.ps1 -DryRun
 .\bin\update_ai_clis.ps1
+.\bin\update_ai_clis.ps1 -Targets codex,kimi
 ```
 
 ## 로그 위치
@@ -83,6 +120,12 @@ LOG_RETENTION_DAYS=14 ./bin/update_ai_clis.sh
 - 실제 변경 없이 확인할 수 있는 dry-run 모드를 지원합니다.
   - Bash: `--dry-run` 또는 `--check`
   - PowerShell: `-DryRun`
+- 업데이트 대상 선택을 지원합니다.
+  - Bash: `AI_CLI_TARGETS=codex,kimi` 또는 `--targets codex,kimi`
+  - PowerShell: `-Targets codex,kimi`
+- 미설치 CLI 설치는 기본 비활성화이며, 명시적인 opt-in이 필요합니다.
+  - Bash: `--install-missing`
+  - PowerShell: `-InstallMissing`
 - 버전 확인 명령은 기본 10초 timeout을 적용합니다.
 - `agy update`는 최대 300초 후 timeout 처리해 대화형 프롬프트나 hang이 자동 실행을 영구 점유하지 않도록 합니다.
 

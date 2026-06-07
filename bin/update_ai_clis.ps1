@@ -2,7 +2,7 @@
 .SYNOPSIS
   Updates installed AI coding CLIs on Windows.
 .DESCRIPTION
-  Conservative updater for Codex CLI and Antigravity CLI.
+  Conservative updater for selected AI coding CLIs.
   Missing CLIs/packages are treated as pass/skip, not failures.
 #>
 [CmdletBinding()]
@@ -11,7 +11,9 @@ param(
   [switch]$DryRun,
   [string]$LogDir = $(if ($env:LOG_DIR) { $env:LOG_DIR } else { Join-Path $env:USERPROFILE '.ai-cli-auto-update\logs' }),
   [int]$LogRetentionDays = $(if ($env:LOG_RETENTION_DAYS) { [int]$env:LOG_RETENTION_DAYS } else { 30 }),
-  [int]$VersionTimeoutSeconds = $(if ($env:VERSION_TIMEOUT_SECONDS) { [int]$env:VERSION_TIMEOUT_SECONDS } else { 10 })
+  [int]$VersionTimeoutSeconds = $(if ($env:VERSION_TIMEOUT_SECONDS) { [int]$env:VERSION_TIMEOUT_SECONDS } else { 10 }),
+  [string]$Targets = $(if ($env:AI_CLI_TARGETS) { $env:AI_CLI_TARGETS } else { 'codex,agy,kimi' }),
+  [switch]$InstallMissing
 )
 
 Set-StrictMode -Version Latest
@@ -69,6 +71,11 @@ function Remove-OldLogs([string]$Path, [int]$RetentionDays) {
     Remove-Item -LiteralPath $log.FullName -Force -ErrorAction SilentlyContinue
   }
   Write-Host "log cleanup: removed $($logs.Count) update logs older than ${RetentionDays}d"
+}
+
+function Test-TargetEnabled([string]$Name) {
+  $selected = @($Targets -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
+  return ($selected -contains 'all') -or ($selected -contains $Name.ToLowerInvariant())
 }
 
 Ensure-Directory $LogDir
@@ -152,6 +159,10 @@ try {
       if ($LASTEXITCODE -ne 0) { throw "npm install failed for $Package with exit code $LASTEXITCODE" }
     }
 
+    function Install-NpmPackage([string]$Package) {
+      Update-NpmPackage $Package
+    }
+
     function Update-AgyCli {
       if (-not (Get-CommandPath 'agy')) { throw 'agy is not installed' }
       $result = Invoke-WithTimeout 'agy' @('update') 300
@@ -159,33 +170,58 @@ try {
       if ($result.ExitCode -ne 0) { throw "agy update failed with exit code $($result.ExitCode)" }
     }
 
+    function Update-KimiCli {
+      if (Test-NpmGlobalPackage '@moonshot-ai/kimi-code') {
+        Update-NpmPackage '@moonshot-ai/kimi-code'
+      } elseif (Get-CommandPath 'kimi') {
+        Write-Host 'kimi command exists but is not npm-managed; skipping unattended update'
+        Write-Host '      reinstall/update with npm for automation: npm install -g @moonshot-ai/kimi-code@latest'
+      } elseif ($InstallMissing) {
+        Install-NpmPackage '@moonshot-ai/kimi-code'
+      } else {
+        Pass-Missing 'kimi' 'command not found and npm global package not installed'
+      }
+    }
+
     Write-Host "[$(Get-Timestamp)] AI CLI update started"
-    Write-Host "host=$env:COMPUTERNAME user=$env:USERNAME dry_run=$DryRun"
+    Write-Host "host=$env:COMPUTERNAME user=$env:USERNAME dry_run=$DryRun targets=$Targets install_missing=$InstallMissing"
     Remove-OldLogs $LogDir $LogRetentionDays
 
     Write-Host ""
     Write-Host "== before versions =="
-    Write-Version codex
-    Write-Version agy
+    if (Test-TargetEnabled 'codex') { Write-Version codex }
+    if (Test-TargetEnabled 'agy') { Write-Version agy }
+    if (Test-TargetEnabled 'kimi') { Write-Version kimi }
 
-    if (Test-NpmGlobalPackage '@openai/codex') {
-      Invoke-Step 'codex via npm' { Update-NpmPackage '@openai/codex' }
-    } elseif (-not (Get-CommandPath 'codex')) {
-      Pass-Missing 'codex' 'command not found and npm global package not installed'
-    } else {
-      Pass-Missing 'codex' 'command exists but no supported Windows package manager was detected'
+    if (Test-TargetEnabled 'codex') {
+      if (Test-NpmGlobalPackage '@openai/codex') {
+        Invoke-Step 'codex via npm' { Update-NpmPackage '@openai/codex' }
+      } elseif (-not (Get-CommandPath 'codex') -and $InstallMissing) {
+        Invoke-Step 'codex via npm install' { Install-NpmPackage '@openai/codex' }
+      } elseif (-not (Get-CommandPath 'codex')) {
+        Pass-Missing 'codex' 'command not found and npm global package not installed'
+      } else {
+        Pass-Missing 'codex' 'command exists but no supported Windows package manager was detected'
+      }
     }
 
-    if (Get-CommandPath 'agy') {
-      Invoke-Step 'antigravity cli via agy' { Update-AgyCli }
-    } else {
-      Pass-Missing 'agy' 'command not found'
+    if (Test-TargetEnabled 'agy') {
+      if (Get-CommandPath 'agy') {
+        Invoke-Step 'antigravity cli via agy' { Update-AgyCli }
+      } else {
+        Pass-Missing 'agy' 'command not found'
+      }
+    }
+
+    if (Test-TargetEnabled 'kimi') {
+      Invoke-Step 'kimi code via npm' { Update-KimiCli }
     }
 
     Write-Host ""
     Write-Host "== after versions =="
-    Write-Version codex
-    Write-Version agy
+    if (Test-TargetEnabled 'codex') { Write-Version codex }
+    if (Test-TargetEnabled 'agy') { Write-Version agy }
+    if (Test-TargetEnabled 'kimi') { Write-Version kimi }
 
     Write-Host ""
     Write-Host "log_file=$logFile"
