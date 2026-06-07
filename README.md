@@ -151,6 +151,16 @@ cp launchd/com.example.ai-cli-auto-update.plist ~/Library/LaunchAgents/com.examp
 launchctl load ~/Library/LaunchAgents/com.example.ai-cli-auto-update.plist
 ```
 
+특정 CLI만 자동 업데이트하려면 plist에 환경변수를 추가하거나, `ProgramArguments`에 `--targets`를 넣으면 됩니다.
+
+```xml
+<key>EnvironmentVariables</key>
+<dict>
+  <key>AI_CLI_TARGETS</key>
+  <string>codex,kimi</string>
+</dict>
+```
+
 수정 후 다시 로드하려면:
 
 ```bash
@@ -172,11 +182,14 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 - 작업 이름: `AI CLI Auto Update`
 - 실행 시각: 매일 05:00
 - 실행 스크립트: `bin\update_ai_clis.ps1`
+- 업데이트 대상: `codex,agy,kimi`
 
-시각이나 경로를 바꾸려면:
+시각, 경로, 업데이트 대상을 바꾸려면:
 
 ```powershell
 .\windows\install_scheduled_task.ps1 -At "05:00" -ScriptPath "C:\path\to\ai_cli_auto_update\bin\update_ai_clis.ps1"
+.\windows\install_scheduled_task.ps1 -Targets "codex,kimi"
+.\windows\install_scheduled_task.ps1 -Targets "kimi" -InstallMissing
 ```
 
 등록 확인:
