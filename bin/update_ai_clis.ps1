@@ -29,27 +29,46 @@ function Ensure-Directory([string]$Path) {
   }
 }
 
+function Join-ProcessArguments([string[]]$Arguments) {
+  $quoted = foreach ($arg in $Arguments) {
+    if ($null -eq $arg) {
+      '""'
+    } elseif ($arg -eq '') {
+      '""'
+    } elseif ($arg -notmatch '[\s"]') {
+      $arg
+    } else {
+      '"' + ($arg -replace '"', '\"') + '"'
+    }
+  }
+  return ($quoted -join ' ')
+}
+
 function Invoke-WithTimeout([string]$Name, [string[]]$Arguments, [int]$TimeoutSeconds) {
   $cmd = Get-Command $Name -ErrorAction Stop
-  $psi = [System.Diagnostics.ProcessStartInfo]::new()
-  $psi.FileName = $cmd.Source
-  foreach ($arg in $Arguments) {
-    [void]$psi.ArgumentList.Add($arg)
-  }
-  $psi.RedirectStandardOutput = $true
-  $psi.RedirectStandardError = $true
-  $psi.UseShellExecute = $false
+  $stdoutFile = [System.IO.Path]::GetTempFileName()
+  $stderrFile = [System.IO.Path]::GetTempFileName()
+  try {
+    $argLine = Join-ProcessArguments $Arguments
+    $process = Start-Process -FilePath $cmd.Source -ArgumentList $argLine -NoNewWindow -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
+    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+      try { $process.Kill() } catch { }
+      $partialOutput = @(
+        if (Test-Path -LiteralPath $stdoutFile) { Get-Content -LiteralPath $stdoutFile -Raw -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $stderrFile) { Get-Content -LiteralPath $stderrFile -Raw -ErrorAction SilentlyContinue }
+        "TIMEOUT after ${TimeoutSeconds}s"
+      ) -join ''
+      return [pscustomobject]@{ ExitCode = 124; Output = $partialOutput }
+    }
 
-  $process = [System.Diagnostics.Process]::new()
-  $process.StartInfo = $psi
-  [void]$process.Start()
-  if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-    try { $process.Kill($true) } catch { }
-    return [pscustomobject]@{ ExitCode = 124; Output = "TIMEOUT after ${TimeoutSeconds}s" }
+    $output = @(
+      Get-Content -LiteralPath $stdoutFile -Raw -ErrorAction SilentlyContinue
+      Get-Content -LiteralPath $stderrFile -Raw -ErrorAction SilentlyContinue
+    ) -join ''
+    return [pscustomobject]@{ ExitCode = $process.ExitCode; Output = $output }
+  } finally {
+    Remove-Item -LiteralPath $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
   }
-
-  $output = @($process.StandardOutput.ReadToEnd(), $process.StandardError.ReadToEnd()) -join ''
-  return [pscustomobject]@{ ExitCode = $process.ExitCode; Output = $output }
 }
 
 function Remove-OldLogs([string]$Path, [int]$RetentionDays) {

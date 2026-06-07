@@ -1,0 +1,24 @@
+name: powershell
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows-powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse PowerShell scripts
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [scriptblock]::Create((Get-Content -LiteralPath .\bin\update_ai_clis.ps1 -Raw)) | Out-Null
+          [scriptblock]::Create((Get-Content -LiteralPath .\windows\install_scheduled_task.ps1 -Raw)) | Out-Null
+
+      - name: Dry-run Windows updater
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\bin\update_ai_clis.ps1 -Targets kimi,gpt,agy,claude,grok -DryRun -LogDir "$env:RUNNER_TEMP\ai-cli-auto-update-logs"
