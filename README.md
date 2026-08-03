@@ -1,91 +1,72 @@
-# ai_cli_auto_update
+<div align="center">
 
-Kimi Code CLI, GPT/Codex CLI, OpenCode, Antigravity CLI, Claude Code, Grok Build 같은 로컬 AI 코딩 CLI를 보수적으로 자동 업데이트하는 작은 유틸리티입니다.
+# AI CLI Auto Update
 
-- macOS: Bash 스크립트 + `launchd`
-- Windows: PowerShell 스크립트 + 작업 스케줄러
-- 매일 새벽 5시에 자동 실행하도록 템플릿을 제공합니다.
-- 해당 시스템에 CLI가 설치되어 있지 않으면 실패로 처리하지 않고 `pass`로 건너뜁니다.
+**Codex, OpenCode, Claude Code, Grok Build 등 로컬 AI 코딩 CLI를<br>
+macOS와 Windows에서 매일 안전하게 최신 상태로 유지합니다.**
 
-## 업데이트 대상
+[![ShellCheck](https://github.com/wilgon456/ai_cli_auto_update_public/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/wilgon456/ai_cli_auto_update_public/actions/workflows/shellcheck.yml)
+[![macOS](https://img.shields.io/badge/macOS-launchd-000000?logo=apple&logoColor=white)](#macos-launchd)
+[![Windows](https://img.shields.io/badge/Windows-Task_Scheduler-0078D4?logo=windows11&logoColor=white)](#windows-task-scheduler)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e.svg)](LICENSE)
 
-| CLI | macOS 지원 방식 | Windows 지원 방식 | 미설치 시 동작 |
+설치된 도구만 업데이트 · 도구별 실패 격리 · dry-run 지원 · 버전과 로그 기록
+
+</div>
+
+---
+
+## 한눈에 보기
+
+- **멀티 플랫폼** — macOS는 Bash + `launchd`, Windows는 PowerShell + 작업 스케줄러
+- **6개 CLI 지원** — Kimi, Codex, OpenCode, Antigravity, Claude Code, Grok Build
+- **보수적인 기본값** — 설치되지 않은 CLI는 새로 설치하지 않고 `pass` 처리
+- **실패 격리** — 한 도구의 업데이트가 실패해도 나머지 도구는 계속 진행
+- **안전한 운영** — 중복 실행 잠금, timeout, 업데이트 전후 버전, 30일 로그 보관
+- **선택 실행** — 원하는 CLI만 골라 확인하거나 업데이트 가능
+
+```text
+05:00 스케줄 실행
+       ↓
+설치 방식 감지 (Homebrew / npm / 내장 updater)
+       ↓
+업데이트 전 버전 → 도구별 업데이트 → 업데이트 후 버전
+       ↓
+~/.ai-cli-auto-update/logs/latest.log
+```
+
+## 지원하는 CLI
+
+| 대상 | 실제 명령 | macOS 업데이트 경로 | Windows 업데이트 경로 |
 | --- | --- | --- | --- |
-| `kimi` | npm `@moonshot-ai/kimi-code` | npm `@moonshot-ai/kimi-code` | `pass` 후 계속 진행 |
-| `gpt` | OpenAI Codex CLI: Homebrew `codex` 또는 npm `@openai/codex` | npm `@openai/codex` | `pass` 후 계속 진행 |
-| `opencode` | Homebrew `opencode`, npm `opencode-ai`, 또는 `opencode upgrade` | npm `opencode-ai` 또는 `opencode upgrade` | `pass` 후 계속 진행 |
-| `agy` | Antigravity CLI 내장 `agy update` | Antigravity CLI 내장 `agy update` | `pass` 후 계속 진행 |
-| `claude` | Homebrew `claude-code`, npm `@anthropic-ai/claude-code`, 또는 `claude update` | npm `@anthropic-ai/claude-code` 또는 `claude update` | `pass` 후 계속 진행 |
-| `grok` | xAI 공식 install script 재실행 | xAI 공식 PowerShell install script 재실행 | `pass` 후 계속 진행 |
+| Kimi Code | `kimi` | npm `@moonshot-ai/kimi-code` | npm `@moonshot-ai/kimi-code` |
+| OpenAI Codex | `codex` | Homebrew `codex` 또는 npm `@openai/codex` | npm `@openai/codex` |
+| OpenCode | `opencode` | Homebrew `opencode` → npm `opencode-ai` → `opencode upgrade` | npm `opencode-ai` → `opencode upgrade` |
+| Antigravity | `agy` | `agy update` | `agy update` |
+| Claude Code | `claude` | Homebrew → npm `@anthropic-ai/claude-code` → `claude update` | npm → `claude update` |
+| Grok Build | `grok` | xAI 공식 설치 스크립트 | xAI 공식 PowerShell 설치 스크립트 |
 
-> 원칙: 설치되어 있는 도구만 업데이트합니다. 없는 CLI를 새로 설치하지 않습니다.
+> 기본 대상은 `kimi,gpt,opencode,agy,claude,grok`입니다. `gpt`는 Codex를 가리키는 선택 이름이며, 기존 자동화 호환을 위해 `codex`도 같은 대상으로 인식합니다.
 
-기본 대상은 `kimi,gpt,opencode,agy,claude,grok`입니다. `AI_CLI_TARGETS` 또는 `--targets` / `-Targets`로 원하는 CLI만 선택할 수 있습니다.
-`gpt`는 OpenAI Codex CLI의 선택 이름이며 실제 명령은 `codex`입니다. 기존 자동화 호환을 위해 `codex` 타깃 이름도 계속 허용합니다.
+## 빠른 시작
 
-```bash
-AI_CLI_TARGETS=kimi,gpt ./bin/update_ai_clis.sh --dry-run
-./bin/update_ai_clis.sh --targets kimi,gpt,agy
-```
-
-```powershell
-.\bin\update_ai_clis.ps1 -Targets kimi,gpt -DryRun
-```
-
-미설치 CLI를 새로 설치하려면 명시적으로 opt-in 해야 합니다.
-
-```bash
-./bin/update_ai_clis.sh --targets kimi --install-missing
-```
-
-```powershell
-.\bin\update_ai_clis.ps1 -Targets kimi -InstallMissing
-```
-
-## 운영 적합성
-
-이 유틸리티는 개인 장비나 소규모 내부 환경에서 로컬 AI CLI를 최신 상태로 유지하는 용도에 맞춰져 있습니다.
-
-| 사용 환경 | 적합도 |
-| --- | --- |
-| 개인 macOS/Windows 장비의 자동 업데이트 | 적합 |
-| 소규모 팀 내부 유틸리티 | 조건부 적합 |
-| 고객 대상 상용 제품의 핵심 운영 구성요소 | 추가 보강 필요 |
-
-상용 운영 수준으로 쓰려면 최소한 실패 알림, CI 기반 Windows 검증, 보안/운영 정책 문서화, 업데이트 실패 리포트를 추가하는 것을 권장합니다.
-
-상용화 버전에서는 설치 단계에서 사용자가 업데이트할 AI CLI를 선택하도록 만드는 구성이 자연스럽습니다.
-
-권장 흐름:
-
-1. OS와 패키지 매니저 감지
-2. 지원 CLI 목록 표시: `kimi`, `gpt`, `opencode`, `agy`, `claude`, `grok`
-3. 사용자가 설치/자동 업데이트 대상을 선택
-4. 선택 결과를 설정 파일 또는 스케줄러 환경변수의 `AI_CLI_TARGETS`로 저장
-5. 미설치 CLI는 사용자가 동의한 경우에만 설치
-6. 스케줄러는 저장된 대상만 업데이트
-
-Kimi Code CLI는 최신 공식 문서 기준으로 새 버전이 Node.js 기반이며, npm 패키지 이름은 `@moonshot-ai/kimi-code`입니다. 기존 Python/uv 기반 `kimi-cli`는 점진적으로 교체되는 경로로 안내되어 있으므로, 자동화에는 npm 기반 설치를 우선합니다.
-OpenCode는 Homebrew 설치를 우선 감지하고, npm `opencode-ai` 또는 CLI 내장 `opencode upgrade`도 지원합니다. Claude Code는 npm `@anthropic-ai/claude-code` 또는 CLI 내장 `claude update`를 우선합니다. Grok Build는 xAI 공식 install script를 재실행하는 방식입니다. Grok 쪽은 공식 문서상 베타 성격이 강하고 계정/구독 조건이 있을 수 있으므로, 상용화 시에는 설치 가능 여부와 약관을 별도 표시하는 것이 좋습니다.
-
-공식 참고 문서:
-
-- Kimi Code CLI: <https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started.html>
-- OpenAI Codex CLI: <https://help.openai.com/en/articles/11096431>
-- OpenCode: <https://github.com/anomalyco/opencode#installation>
-- Claude Code: <https://code.claude.com/docs/en/installation>
-- Grok Build: <https://docs.x.ai/build/overview>
-
-## 빠른 실행
-
-### macOS / Linux 계열 셸
+### macOS
 
 ```bash
 git clone https://github.com/wilgon456/ai_cli_auto_update_public.git
 cd ai_cli_auto_update_public
+
+# 변경 없이 감지 결과와 실행 흐름 확인
 ./bin/update_ai_clis.sh --dry-run
+
+# 설치된 기본 대상 업데이트
 ./bin/update_ai_clis.sh
-./bin/update_ai_clis.sh --targets kimi,gpt,claude
+```
+
+특정 도구만 실행할 수도 있습니다.
+
+```bash
+./bin/update_ai_clis.sh --targets codex,opencode,claude,grok
 ```
 
 ### Windows PowerShell
@@ -93,163 +74,181 @@ cd ai_cli_auto_update_public
 ```powershell
 git clone https://github.com/wilgon456/ai_cli_auto_update_public.git
 cd ai_cli_auto_update_public
+
+# 변경 없이 감지 결과와 실행 흐름 확인
 .\bin\update_ai_clis.ps1 -DryRun
+
+# 설치된 기본 대상 업데이트
 .\bin\update_ai_clis.ps1
-.\bin\update_ai_clis.ps1 -Targets kimi,gpt,claude
 ```
 
-## 로그 위치
-
-기본 로그 위치는 운영체제별로 다릅니다.
-
-| OS | 기본 로그 위치 |
-| --- | --- |
-| macOS / Bash | `~/.ai-cli-auto-update/logs/` |
-| Windows PowerShell | `%USERPROFILE%\.ai-cli-auto-update\logs\` |
-
-환경변수나 파라미터로 바꿀 수 있습니다.
-
-```bash
-LOG_DIR=/path/to/logs ./bin/update_ai_clis.sh
-LOG_RETENTION_DAYS=14 ./bin/update_ai_clis.sh
-```
+특정 도구만 실행할 수도 있습니다.
 
 ```powershell
-.\bin\update_ai_clis.ps1 -LogDir "C:\path\to\logs"
-.\bin\update_ai_clis.ps1 -LogRetentionDays 14
+.\bin\update_ai_clis.ps1 -Targets codex,opencode,claude,grok
 ```
 
-각 실행은 timestamp 로그와 `latest.log`를 남깁니다.
-기본적으로 30일보다 오래된 `update-*.log`는 자동 삭제합니다. `LOG_RETENTION_DAYS`로 조정할 수 있고, `0`이면 정리를 끕니다.
-
-## 안전 동작
-
-- 동시에 두 번 실행되지 않도록 잠금 처리합니다.
-- 업데이트 전/후 버전과 경로를 기록합니다.
-- 오래된 timestamp 로그를 자동 정리하고 `latest.log`는 유지합니다.
-- 한 CLI 업데이트가 실패해도 나머지 CLI 업데이트는 계속 진행합니다.
-- CLI가 아예 설치되어 있지 않으면 실패가 아니라 `pass`로 기록합니다.
-- 환경변수 전체나 토큰/시크릿 값을 출력하지 않습니다.
-- 실제 변경 없이 확인할 수 있는 dry-run 모드를 지원합니다.
-  - Bash: `--dry-run` 또는 `--check`
-  - PowerShell: `-DryRun`
-- 업데이트 대상 선택을 지원합니다.
-  - Bash: `AI_CLI_TARGETS=kimi,gpt,claude` 또는 `--targets kimi,gpt,claude`
-  - PowerShell: `-Targets kimi,gpt,claude`
-- 미설치 CLI 설치는 기본 비활성화이며, 명시적인 opt-in이 필요합니다.
-  - Bash: `--install-missing`
-  - PowerShell: `-InstallMissing`
-- 버전 확인 명령은 기본 10초 timeout을 적용합니다.
-- `opencode upgrade`, `agy update`, `claude update`, Grok install script는 최대 300초 후 timeout 처리해 대화형 프롬프트나 hang이 자동 실행을 영구 점유하지 않도록 합니다.
-
-## 알려진 한계
-
-- 실패 알림은 아직 없습니다. 실패 여부는 `latest.log` 또는 timestamp 로그를 확인해야 합니다.
-- PowerShell 스크립트는 Windows 환경에서 별도 검증해야 합니다.
-- `agy update`가 향후 공식 non-interactive 옵션을 제공하면 timeout보다 해당 옵션을 쓰는 것이 더 좋습니다.
-- 업데이트 후 CLI 자체가 회귀했을 때 자동 rollback하지 않습니다.
-- 패키지 매니저와 CLI 내장 updater를 신뢰하는 구조이며, 별도의 서명 검증 정책은 포함하지 않습니다.
-
-## 매일 새벽 5시 자동 실행
+## 자동 실행 설정
 
 ### macOS: launchd
 
-`launchd/com.example.ai-cli-auto-update.plist` 템플릿은 매일 05:00에 실행되도록 설정되어 있습니다.
+저장소의 템플릿은 매일 **05:00**에 실행되도록 구성되어 있습니다.
 
 ```bash
 mkdir -p ~/Library/LaunchAgents
-cp launchd/com.example.ai-cli-auto-update.plist ~/Library/LaunchAgents/com.example.ai-cli-auto-update.plist
-
-# 필요하면 plist 안의 ProgramArguments 경로를 본인 clone 경로로 수정하세요.
-launchctl load ~/Library/LaunchAgents/com.example.ai-cli-auto-update.plist
+cp launchd/com.example.ai-cli-auto-update.plist \
+  ~/Library/LaunchAgents/com.example.ai-cli-auto-update.plist
 ```
 
-특정 CLI만 자동 업데이트하려면 plist에 환경변수를 추가하거나, `ProgramArguments`에 `--targets`를 넣으면 됩니다.
+복사한 plist에서 다음 경로를 실제 clone 위치와 사용자 홈에 맞게 수정합니다.
 
 ```xml
-<key>EnvironmentVariables</key>
-<dict>
-  <key>AI_CLI_TARGETS</key>
-  <string>kimi,gpt,claude</string>
-</dict>
+<string>/path/to/ai_cli_auto_update/bin/update_ai_clis.sh</string>
+<string>/Users/your-user/.ai-cli-auto-update/launchd.out.log</string>
+<string>/Users/your-user/.ai-cli-auto-update/launchd.err.log</string>
 ```
 
-수정 후 다시 로드하려면:
+설정을 등록합니다.
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.example.ai-cli-auto-update.plist
+launchctl list | grep ai-cli-auto-update
+```
+
+plist를 수정한 경우 다시 로드합니다.
 
 ```bash
 launchctl unload ~/Library/LaunchAgents/com.example.ai-cli-auto-update.plist 2>/dev/null || true
 launchctl load ~/Library/LaunchAgents/com.example.ai-cli-auto-update.plist
 ```
 
-### Windows: 작업 스케줄러
+### Windows: Task Scheduler
 
-관리자 권한이 아니어도 현재 사용자 작업으로 등록할 수 있습니다.
+관리자 권한 없이 현재 사용자 작업으로 매일 **05:00** 실행되도록 등록합니다.
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 .\windows\install_scheduled_task.ps1
 ```
 
-기본값:
-
-- 작업 이름: `AI CLI Auto Update`
-- 실행 시각: 매일 05:00
-- 실행 스크립트: `bin\update_ai_clis.ps1`
-- 업데이트 대상: `kimi,gpt,opencode,agy,claude,grok`
-
-시각, 경로, 업데이트 대상을 바꾸려면:
-
-```powershell
-.\windows\install_scheduled_task.ps1 -At "05:00" -ScriptPath "C:\path\to\ai_cli_auto_update\bin\update_ai_clis.ps1"
-.\windows\install_scheduled_task.ps1 -Targets "kimi,gpt,claude"
-.\windows\install_scheduled_task.ps1 -Targets "kimi" -InstallMissing
-```
-
-등록 확인:
+등록 결과를 확인하거나 즉시 실행할 수 있습니다.
 
 ```powershell
 Get-ScheduledTask -TaskName "AI CLI Auto Update"
-```
-
-수동 실행:
-
-```powershell
 Start-ScheduledTask -TaskName "AI CLI Auto Update"
 ```
 
-## Cron 예시
+실행 시각과 대상을 직접 지정하려면 다음처럼 등록합니다.
 
-`launchd`나 작업 스케줄러를 쓰지 않고 cron을 쓰는 환경이라면 매일 05:00에 아래처럼 등록할 수 있습니다.
+```powershell
+.\windows\install_scheduled_task.ps1 `
+  -At "05:00" `
+  -Targets "codex,opencode,claude,grok"
+```
+
+## 설정
+
+### 대상 선택
+
+| 환경 | 명령 예시 |
+| --- | --- |
+| Bash 인자 | `./bin/update_ai_clis.sh --targets kimi,codex,opencode` |
+| Bash 환경변수 | `AI_CLI_TARGETS=kimi,codex,opencode ./bin/update_ai_clis.sh` |
+| PowerShell | `.\bin\update_ai_clis.ps1 -Targets kimi,codex,opencode` |
+| 전체 대상 | `--targets all` 또는 `-Targets all` |
+
+### 미설치 도구 설치
+
+기본값에서는 설치되지 않은 CLI를 건너뜁니다. 새 도구 설치는 반드시 명시적으로 허용해야 합니다.
+
+```bash
+./bin/update_ai_clis.sh --targets opencode --install-missing
+```
+
+```powershell
+.\bin\update_ai_clis.ps1 -Targets opencode -InstallMissing
+```
+
+### 로그와 보관 기간
+
+| OS | 기본 로그 위치 |
+| --- | --- |
+| macOS / Bash | `~/.ai-cli-auto-update/logs/` |
+| Windows | `%USERPROFILE%\.ai-cli-auto-update\logs\` |
+
+각 실행은 timestamp 로그와 `latest.log`를 남깁니다. 기본 보관 기간은 30일입니다.
+
+```bash
+LOG_RETENTION_DAYS=14 ./bin/update_ai_clis.sh
+LOG_DIR=/path/to/logs ./bin/update_ai_clis.sh
+```
+
+```powershell
+.\bin\update_ai_clis.ps1 -LogRetentionDays 14
+.\bin\update_ai_clis.ps1 -LogDir "C:\logs\ai-cli-update"
+```
+
+## 안전 장치
+
+| 장치 | 동작 |
+| --- | --- |
+| 중복 실행 방지 | Bash lock directory / Windows 사용자별 mutex |
+| dry-run | 실제 업데이트와 로그 정리 없이 실행 흐름 확인 |
+| 실패 격리 | 한 CLI가 실패해도 다음 CLI 업데이트 계속 진행 |
+| 설치 보호 | `--install-missing` 또는 `-InstallMissing` 없이는 새 CLI 설치 금지 |
+| timeout | 버전 확인 10초, 내장 updater와 설치 스크립트 300초 |
+| 비밀 보호 | 환경변수 전체와 토큰 값을 출력하지 않음 |
+| 추적 가능성 | 업데이트 전후 버전, 실행 경로, 결과를 로그로 기록 |
+
+## 운영 범위와 한계
+
+이 프로젝트는 개인 장비와 소규모 내부 환경에 적합합니다.
+
+| 환경 | 적합도 |
+| --- | --- |
+| 개인 macOS / Windows 장비 | ✅ 적합 |
+| 소규모 팀 내부 자동화 | ⚠️ 조건부 적합 |
+| 고객 대상 핵심 상용 인프라 | 🛠️ 추가 보강 필요 |
+
+현재 다음 기능은 포함하지 않습니다.
+
+- 업데이트 실패 알림
+- 문제 버전 자동 rollback
+- 패키지별 별도 서명 검증 정책
+- Windows PowerShell의 지속적인 CI 실행
+
+Grok Build는 베타 성격과 계정·구독 조건이 있을 수 있습니다. 각 CLI의 패키지 관리자와 공식 updater를 신뢰하는 구조이므로 조직 환경에서는 별도의 변경 관리 정책을 권장합니다.
+
+## Cron으로 실행하기
+
+`launchd` 대신 cron을 사용하는 환경에서는 다음과 같이 등록할 수 있습니다.
 
 ```cron
 0 5 * * * /path/to/ai_cli_auto_update/bin/update_ai_clis.sh >> "$HOME/.ai-cli-auto-update/cron.log" 2>&1
 ```
 
-## 다른 자동화와 연동
-
-cron job이나 다른 자동화에서 이 스크립트를 직접 호출해도 됩니다. 이 저장소는 특정 런타임 내부 구현에 의존하지 않도록 Bash/PowerShell 중심으로 구성되어 있습니다.
-
-예시:
-
-```text
-/path/to/ai_cli_auto_update/bin/update_ai_clis.sh
-```
-
-## 개발/검증
-
-macOS/Bash 쪽 문법 확인:
+## 개발 및 검증
 
 ```bash
 bash -n bin/update_ai_clis.sh
+shellcheck bin/update_ai_clis.sh
 ./bin/update_ai_clis.sh --dry-run
 ```
 
-Windows/PowerShell 쪽은 PowerShell이 있는 환경에서 확인합니다.
+PowerShell이 있는 환경에서는 다음 명령으로 Windows 실행 경로를 확인합니다.
 
 ```powershell
 .\bin\update_ai_clis.ps1 -DryRun
 ```
 
-## 라이선스
+## 공식 문서
 
-MIT
+- [Kimi Code CLI](https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started.html)
+- [OpenAI Codex CLI](https://help.openai.com/en/articles/11096431)
+- [OpenCode](https://github.com/anomalyco/opencode#installation)
+- [Claude Code](https://code.claude.com/docs/en/installation)
+- [Grok Build](https://docs.x.ai/build/overview)
+
+## License
+
+MIT License. 자세한 내용은 [LICENSE](LICENSE)를 확인하세요.
