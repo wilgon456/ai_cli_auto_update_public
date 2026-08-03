@@ -4,6 +4,7 @@ set -Eeuo pipefail
 # Auto-update local AI coding CLIs.
 # Targets:
 #   - GPT/Codex CLI: Homebrew cask/formula when present; npm global only if it is the active command
+#   - OpenCode CLI: Homebrew, npm, or built-in opencode upgrade
 #   - Antigravity CLI: agy built-in updater when present
 #   - Kimi Code CLI: npm @moonshot-ai/kimi-code when npm-managed
 #   - Claude Code CLI: Homebrew, npm, or built-in claude update
@@ -20,7 +21,7 @@ LOG_DIR="${LOG_DIR:-${HOME:-/tmp}/.ai-cli-auto-update/logs}"
 LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-30}"
 BREW="${BREW:-$(command -v brew 2>/dev/null || echo /usr/local/bin/brew)}"
 NPM="${NPM:-$(command -v npm 2>/dev/null || echo /usr/local/bin/npm)}"
-AI_CLI_TARGETS="${AI_CLI_TARGETS:-kimi,gpt,agy,claude,grok}"
+AI_CLI_TARGETS="${AI_CLI_TARGETS:-kimi,gpt,opencode,agy,claude,grok}"
 INSTALL_MISSING="${INSTALL_MISSING:-false}"
 PATH="/usr/local/bin:/opt/homebrew/bin:${HOME:-}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 DRY_RUN=false
@@ -39,7 +40,7 @@ while (($#)); do
       ;;
     --targets=*) AI_CLI_TARGETS="${1#--targets=}" ;;
     -h|--help)
-      echo "Usage: $0 [--dry-run|--check] [--targets kimi,gpt,agy,claude,grok|all] [--install-missing]"
+      echo "Usage: $0 [--dry-run|--check] [--targets kimi,gpt,opencode,agy,claude,grok|all] [--install-missing]"
       exit 0
       ;;
     *)
@@ -341,6 +342,20 @@ update_claude_cli() {
   fi
 }
 
+update_opencode_cli() {
+  if is_brew_cask_installed opencode || is_brew_formula_installed opencode; then
+    update_brew_package opencode
+  elif is_npm_global_installed "opencode-ai"; then
+    update_npm_package "opencode-ai"
+  elif command -v opencode >/dev/null 2>&1; then
+    command_with_timeout 300 opencode upgrade
+  elif [[ "$INSTALL_MISSING" == "true" ]]; then
+    install_npm_package "opencode-ai"
+  else
+    pass_missing opencode "command not found and no supported package manager install detected"
+  fi
+}
+
 install_or_update_grok_cli() {
   command -v curl >/dev/null 2>&1 || { echo "curl is not installed"; return 1; }
   command_with_timeout 300 bash -c 'curl -fsSL https://x.ai/cli/install.sh | bash'
@@ -376,13 +391,14 @@ cleanup_old_logs
 echo
 echo "== before versions =="
 gpt_target_enabled && version_of codex
+target_enabled opencode && version_of opencode
 target_enabled agy && version_of agy
 target_enabled kimi && version_of kimi
 target_enabled claude && version_of claude
 target_enabled grok && version_of grok
 
 if command -v "$BREW" >/dev/null 2>&1; then
-  if { gpt_target_enabled && { is_brew_cask_installed codex || is_brew_formula_installed codex; }; } || { target_enabled claude && { is_brew_cask_installed claude-code || is_brew_formula_installed claude-code; }; }; then
+  if { gpt_target_enabled && { is_brew_cask_installed codex || is_brew_formula_installed codex; }; } || { target_enabled opencode && { is_brew_cask_installed opencode || is_brew_formula_installed opencode; }; } || { target_enabled claude && { is_brew_cask_installed claude-code || is_brew_formula_installed claude-code; }; }; then
     run_step "brew update" "$BREW" update
   else
     echo "pass: no target Homebrew-managed CLIs installed; skipping brew update"
@@ -415,6 +431,10 @@ if gpt_target_enabled; then
   fi
 fi
 
+if target_enabled opencode; then
+  run_step "opencode" update_opencode_cli
+fi
+
 if target_enabled agy; then
   if command -v agy >/dev/null 2>&1; then
     run_step "antigravity cli via agy" update_agy_cli
@@ -439,6 +459,7 @@ echo
 echo "== after versions =="
 hash -r || true
 gpt_target_enabled && version_of codex
+target_enabled opencode && version_of opencode
 target_enabled agy && version_of agy
 target_enabled kimi && version_of kimi
 target_enabled claude && version_of claude

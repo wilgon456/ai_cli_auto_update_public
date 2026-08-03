@@ -12,7 +12,7 @@ param(
   [string]$LogDir = $(if ($env:LOG_DIR) { $env:LOG_DIR } else { Join-Path $env:USERPROFILE '.ai-cli-auto-update\logs' }),
   [int]$LogRetentionDays = $(if ($env:LOG_RETENTION_DAYS) { [int]$env:LOG_RETENTION_DAYS } else { 30 }),
   [int]$VersionTimeoutSeconds = $(if ($env:VERSION_TIMEOUT_SECONDS) { [int]$env:VERSION_TIMEOUT_SECONDS } else { 10 }),
-  [string[]]$Targets = $(if ($env:AI_CLI_TARGETS) { $env:AI_CLI_TARGETS } else { 'kimi,gpt,agy,claude,grok' }),
+  [string[]]$Targets = $(if ($env:AI_CLI_TARGETS) { $env:AI_CLI_TARGETS } else { 'kimi,gpt,opencode,agy,claude,grok' }),
   [switch]$InstallMissing
 )
 
@@ -220,6 +220,20 @@ try {
       }
     }
 
+    function Update-OpenCodeCli {
+      if (Test-NpmGlobalPackage 'opencode-ai') {
+        Update-NpmPackage 'opencode-ai'
+      } elseif (Get-CommandPath 'opencode') {
+        $result = Invoke-WithTimeout 'opencode' @('upgrade') 300
+        if ($result.Output) { Write-Host $result.Output.TrimEnd() }
+        if ($result.ExitCode -ne 0) { throw "opencode upgrade failed with exit code $($result.ExitCode)" }
+      } elseif ($InstallMissing) {
+        Install-NpmPackage 'opencode-ai'
+      } else {
+        Pass-Missing 'opencode' 'command not found and npm global package not installed'
+      }
+    }
+
     function Install-OrUpdate-GrokCli {
       $result = Invoke-WithTimeout 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'irm https://x.ai/cli/install.ps1 | iex') 300
       if ($result.Output) { Write-Host $result.Output.TrimEnd() }
@@ -243,6 +257,7 @@ try {
     Write-Host ""
     Write-Host "== before versions =="
     if (Test-GptTargetEnabled) { Write-Version codex }
+    if (Test-TargetEnabled 'opencode') { Write-Version opencode }
     if (Test-TargetEnabled 'agy') { Write-Version agy }
     if (Test-TargetEnabled 'kimi') { Write-Version kimi }
     if (Test-TargetEnabled 'claude') { Write-Version claude }
@@ -258,6 +273,10 @@ try {
       } else {
         Pass-Missing 'gpt' 'codex command exists but no supported Windows package manager was detected'
       }
+    }
+
+    if (Test-TargetEnabled 'opencode') {
+      Invoke-Step 'opencode' { Update-OpenCodeCli }
     }
 
     if (Test-TargetEnabled 'agy') {
@@ -283,6 +302,7 @@ try {
     Write-Host ""
     Write-Host "== after versions =="
     if (Test-GptTargetEnabled) { Write-Version codex }
+    if (Test-TargetEnabled 'opencode') { Write-Version opencode }
     if (Test-TargetEnabled 'agy') { Write-Version agy }
     if (Test-TargetEnabled 'kimi') { Write-Version kimi }
     if (Test-TargetEnabled 'claude') { Write-Version claude }
