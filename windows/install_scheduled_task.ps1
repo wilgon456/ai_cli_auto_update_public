@@ -9,7 +9,7 @@ param(
   [string]$TaskName = 'AI CLI Auto Update',
   [string]$ScriptPath = $(Join-Path (Split-Path -Parent $PSScriptRoot) 'bin\update_ai_clis.ps1'),
   [string]$At = '05:00',
-  [string]$Targets = $(if ($env:AI_CLI_TARGETS) { $env:AI_CLI_TARGETS } else { 'kimi,gpt,agy,claude,grok' }),
+  [string]$Targets = $(if ($env:AI_CLI_TARGETS) { $env:AI_CLI_TARGETS } else { 'kimi,gpt,opencode,agy,claude,grok' }),
   [int]$LogRetentionDays = $(if ($env:LOG_RETENTION_DAYS) { [int]$env:LOG_RETENTION_DAYS } else { 30 }),
   [switch]$InstallMissing
 )
